@@ -1,0 +1,6 @@
+{
+  "name": "Network Traffic Monitor",
+  "description": "Security Operations Center (SOC) live network packet sniffer, anomaly detection rules engine, and real-time dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

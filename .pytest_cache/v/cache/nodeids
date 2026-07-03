@@ -1,0 +1,6 @@
+[
+  "network-monitor/tests/test_rules_engine.py::test_blocklist_hit",
+  "network-monitor/tests/test_rules_engine.py::test_cooldown_suppression",
+  "network-monitor/tests/test_rules_engine.py::test_port_scan_detection",
+  "network-monitor/tests/test_rules_engine.py::test_traffic_spike_detection"
+]

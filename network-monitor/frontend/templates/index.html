@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetPulse SOC — Network Traffic Monitor & Anomaly Alert Tool</title>
+    
+    <!-- Google Fonts: Inter & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Socket.IO Client & Chart.js via CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.4/dist/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="soc-wrapper">
+        <!-- TOP BAR: Logo left · Live controls & Status pill right -->
+        <header class="top-bar">
+            <div class="logo-section">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        <path d="M12 8v4"/>
+                        <path d="M12 16h.01"/>
+                    </svg>
+                </div>
+                <div class="title-group">
+                    <h1>NetPulse SOC <span>v2.4</span></h1>
+                    <p>Network Traffic Monitor & Anomaly Alert Engine</p>
+                </div>
+            </div>
+
+            <div class="top-controls">
+                <!-- Demo Trigger Buttons -->
+                <div class="demo-group">
+                    <span class="demo-label">⚡ Trigger Demo Alert:</span>
+                    <button class="btn btn-demo" onclick="triggerDemo('port_scan')" title="Simulate rapid multi-port probing">
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                        Port Scan
+                    </button>
+                    <button class="btn btn-demo" onclick="triggerDemo('traffic_spike')" title="Simulate massive packet burst">
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                        Spike
+                    </button>
+                    <button class="btn btn-demo" onclick="triggerDemo('blocklist_hit')" title="Simulate communication with blocked IP">
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                        Blocklist Hit
+                    </button>
+                </div>
+
+                <!-- Week 3: Export PDF Button -->
+                <a href="/api/export" target="_blank" class="btn btn-export" title="Download Daily SOC PDF Summary Report">
+                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
+                    <span>Export Daily Report</span>
+                </a>
+
+                <!-- Week 3: Dark/Light Theme Toggle -->
+                <button class="btn btn-icon-only" id="themeToggleBtn" onclick="toggleTheme()" title="Toggle Theme">
+                    <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                </button>
+
+                <!-- Live Status Pill & Radar -->
+                <div class="defcon-badge normal" id="defconBadge" title="Overall Network Security Posture">
+                    <span class="defcon-icon">🛡️</span>
+                    <span id="defconText">DEFCON 5 — ALL CLEAR</span>
+                </div>
+                <div class="status-pill healthy" id="statusPill" title="Network sniffer status">
+                    <span class="status-dot"></span>
+                    <span id="statusText">● LIVE — Connecting...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- MAIN GRID: Left 30% Stat Cards & Blocklist · Right 70% Chart & Alert Feed -->
+        <main class="main-content">
+            <!-- LEFT COLUMN (30%) -->
+            <aside class="left-col">
+                <!-- Stat Card 1: Packets / Sec -->
+                <div class="stat-card accent-cyan">
+                    <div class="stat-header">
+                        <span class="stat-label">PACKETS / SEC (1s PULSE)</span>
+                        <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    </div>
+                    <div class="stat-value font-mono" id="valPacketsSec">0.0</div>
+                    <div class="stat-footer">⏱️ Continuous 1-sec rolling ticker</div>
+                </div>
+
+                <!-- Stat Card 2: Total Packets -->
+                <div class="stat-card accent-blue">
+                    <div class="stat-header">
+                        <span class="stat-label">TOTAL PACKETS LOGGED</span>
+                        <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                    </div>
+                    <div class="stat-value font-mono" id="valTotalPackets">0</div>
+                    <div class="stat-footer">Stored in SQLite archive</div>
+                </div>
+
+                <!-- Stat Card 3: Active Alerts -->
+                <div class="stat-card accent-red" id="cardActiveAlerts">
+                    <div class="stat-header">
+                        <span class="stat-label">ACTIVE SECURITY ALERTS</span>
+                        <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    </div>
+                    <div class="stat-value font-mono" id="valActiveAlerts">0</div>
+                    <div class="stat-footer" id="alertsFooterText">All clear — no threats detected</div>
+                </div>
+
+                <!-- Stat Card 4: Top Talker IP -->
+                <div class="stat-card accent-amber">
+                    <div class="stat-header">
+                        <span class="stat-label">TOP TALKER IP (5m)</span>
+                        <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                    </div>
+                    <div class="stat-value stat-value-ip font-mono" id="valTopTalker">None</div>
+                    <div class="stat-footer" id="topTalkerCount">0 pkts logged</div>
+                </div>
+
+                <!-- NEW: SOC Rules & Threat Threshold Tuning Panel -->
+                <div class="panel tuning-panel">
+                    <div class="panel-header">
+                        <div class="header-title">
+                            <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                            <h2>SOC Threat Rule Thresholds</h2>
+                        </div>
+                        <span class="badge badge-amber">Live Tuning</span>
+                    </div>
+                    <div class="tuning-body">
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <span>🎯 Port Scan Sensitivity (Ports/10s):</span>
+                                <span class="slider-val font-mono" id="lblPortScan">20</span>
+                            </div>
+                            <input type="range" id="sliderPortScan" min="5" max="50" step="1" value="20" oninput="updateSliderLabel('lblPortScan', this.value)">
+                        </div>
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <span>🌊 Traffic Spike Threshold (Pkts/5s):</span>
+                                <span class="slider-val font-mono" id="lblTrafficSpike">100</span>
+                            </div>
+                            <input type="range" id="sliderTrafficSpike" min="20" max="300" step="10" value="100" oninput="updateSliderLabel('lblTrafficSpike', this.value)">
+                        </div>
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <span>⏱️ Cooldown Suppress Shield (Sec):</span>
+                                <span class="slider-val font-mono" id="lblCooldown">60</span>
+                            </div>
+                            <input type="range" id="sliderCooldown" min="10" max="120" step="10" value="60" oninput="updateSliderLabel('lblCooldown', this.value)">
+                        </div>
+                        <button class="btn btn-primary btn-full" onclick="saveSocConfig()">⚡ Apply Rule Thresholds Live</button>
+                    </div>
+                </div>
+
+                <!-- Week 2: Blocklist Management Card -->
+                <div class="panel blocklist-panel">
+                    <div class="panel-header">
+                        <div class="header-title">
+                            <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                            <h2>Static Blocklist (Week 2 API)</h2>
+                        </div>
+                        <span class="badge badge-cyan" id="blocklistCountBadge">0 IPs</span>
+                    </div>
+                    <div class="blocklist-body">
+                        <p class="section-desc">Traffic involving these IPs immediately triggers a HIGH severity security alert.</p>
+                        <form id="blocklistForm" onsubmit="addBlocklistIp(event)">
+                            <div class="input-group">
+                                <input type="text" id="newIpInput" class="font-mono" placeholder="e.g. 185.220.101.5" required pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$" title="Enter a valid IPv4 address">
+                                <button type="submit" class="btn btn-primary">+ Add IP</button>
+                            </div>
+                        </form>
+                        <div class="ip-tags-container" id="ipTagsContainer">
+                            <!-- Dynamically populated tags -->
+                            <span class="loading-text">Loading blocklist...</span>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- RIGHT COLUMN (70%) -->
+            <section class="right-col">
+                <!-- TOP: Live Traffic Line Chart -->
+                <div class="panel chart-panel">
+                    <div class="panel-header">
+                        <div class="header-title">
+                            <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                            <h2>Live Network Traffic Rate (Last 5 Minutes)</h2>
+                        </div>
+                        <div class="chart-legend">
+                            <span class="legend-item"><span class="legend-dot cyan"></span>Packets / sec</span>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="trafficChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- BOTTOM: Anomaly Alert Feed -->
+                <div class="panel alerts-panel">
+                    <div class="panel-header">
+                        <div class="header-title">
+                            <svg class="panel-icon alert-icon-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            <h2>Real-Time Anomaly Alert Feed</h2>
+                        </div>
+                        <div class="header-actions">
+                            <button class="btn btn-sm btn-outline" onclick="clearAlertFeed()">Clear View</button>
+                        </div>
+                    </div>
+                    <div class="alerts-list-header">
+                        <span>SEVERITY & TYPE</span>
+                        <span>SOURCE / DESTINATION</span>
+                        <span>DETAILED THREAT ANALYSIS</span>
+                        <span>TIMESTAMP</span>
+                    </div>
+                    <div class="alerts-list" id="alertsList">
+                        <!-- Populated live by SocketIO & REST API -->
+                        <div class="empty-state" id="alertsEmptyState">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>
+                            <p>No active anomalies flagged in the current session.</p>
+                            <span>Click any "⚡ Trigger Demo Alert" button above or run `nmap` to test the rules engine.</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- BOTTOM COLLAPSIBLE DRAWER: Raw Packet Log Table -->
+        <footer class="bottom-drawer" id="packetDrawer">
+            <div class="drawer-toggle" onclick="toggleDrawer()">
+                <div class="toggle-content">
+                    <svg class="drawer-icon" id="drawerChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                    <span class="font-mono">📦 RAW PACKET TELEMETRY ARCHIVE & INSPECTOR</span>
+                    <span class="badge badge-gray" id="drawerPacketCount">0 rows loaded</span>
+                </div>
+                <span class="toggle-hint">Click to expand / collapse raw packet stream</span>
+            </div>
+            
+            <div class="drawer-body" id="drawerBody">
+                <div class="drawer-toolbar">
+                    <div class="filter-box">
+                        <svg class="filter-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" id="packetFilterInput" class="font-mono" placeholder="Filter by IP, port, or protocol (e.g. '192.168', 'TCP', '80')..." oninput="filterPacketTable()">
+                    </div>
+                    <div class="toolbar-actions">
+                        <button class="btn btn-sm btn-outline" onclick="fetchRecentPackets()">↻ Refresh Archive</button>
+                        <span class="live-stream-badge">● Live Auto-Appending</span>
+                    </div>
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="packet-table font-mono" id="packetTable">
+                        <thead>
+                            <tr>
+                                <th style="width: 80px;">ID</th>
+                                <th style="width: 140px;">TIMESTAMP</th>
+                                <th style="width: 160px;">SOURCE IP</th>
+                                <th style="width: 80px;">SPORT</th>
+                                <th style="width: 160px;">DEST IP</th>
+                                <th style="width: 80px;">DPORT</th>
+                                <th style="width: 100px;">PROTO</th>
+                                <th style="width: 90px;">LENGTH</th>
+                            </tr>
+                        </thead>
+                        <tbody id="packetTableBody">
+                            <tr class="empty-row"><td colspan="8">Loading raw packet telemetry...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Vanilla JS Dashboard Engine -->
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>
